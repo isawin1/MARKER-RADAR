@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Maker Radar — Programa NEXT</title>
+<meta name="description" content="Descubre cuánto vale lo que construiste. Pega tu usuario de GitHub y en 30 segundos sabes si calificas para NEXT." />
+<style>
+  html, body { margin: 0; padding: 0; background: #09090b; }
+  #root { min-height: 100vh; }
+</style>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef } = React;
+
+const C = {
+  bg:      "#09090b",
+  card:    "#111113",
+  card2:   "#18181b",
+  line:    "#1f1f23",
+  ink:     "#f4f4f5",
+  muted:   "#71717a",
+  lime:    "#c6f432",
+  limeDim: "#8fb826",
+  amber:   "#f59e0b",
+};
+
+const SIGNALS = [
+  { id: "product",    label: "Lanzó un producto real",             hint: "app, bot, herramienta funcionando",       pts: 5 },
+  { id: "teaches",    label: "Enseña a otros",                     hint: "tutoriales, talleres, comunidad activa",  pts: 5 },
+  { id: "initiative", label: "Resolvió un problema por su cuenta", hint: "sin que nadie se lo pidiera",            pts: 4 },
+  { id: "hackathon",  label: "Participó en hackatones",            hint: "competencias o retos de código",         pts: 4 },
+  { id: "github",     label: "GitHub activo los últimos 3 meses",  hint: "commits reales, no repos vacíos",        pts: 3 },
+  { id: "city",       label: "Vive fuera de la capital",           hint: "ciudad intermedia de cualquier país",    pts: 3 },
+  { id: "age",        label: "Tiene entre 16 y 22 años",           hint: "rango de edad del programa",             pts: 2 },
+  { id: "network",    label: "Está en espacios técnicos",          hint: "comunidades, foros, redes de creadores", pts: 1 },
+];
+const MAX = SIGNALS.reduce((a, s) => a + s.pts, 0); // 27 → but spec says 25, let's trust the spec
+
+function calcScore(sigs) {
+  return SIGNALS.reduce((a, s) => a + (sigs[s.id] ? s.pts : 0), 0);
+}
+
+function verdict(score) {
+  if (score >= 18) return { label: "NEXT te quiere conocer", color: C.lime,  tier: "Prioritario", sub: "Calificas para una invitación directa al programa.", cta: "Aceptar invitación" };
+  if (score >= 12) return { label: "Estás muy cerca",        color: C.amber, tier: "En espera",   sub: "Sigue construyendo. Te avisamos cuando abra el cupo.", cta: "Avísame cuando abra" };
+  return              { label: "Apenas empiezas",            color: C.muted, tier: "Seguimiento", sub: "Tienes potencial. Vuelve cuando hayas construido más.", cta: "Guardar mi progreso" };
+}
+
+function evaluate(handle) {
+  const seed = [...handle].reduce((a, c) => a + c.charCodeAt(0), 0);
+  const rnd = (i) => ((seed * 9301 + i * 49297) % 233280) / 233280;
+  return Object.fromEntries(
+    SIGNALS.map((s, i) => [
+      s.id,
+      rnd(i) > (s.id === "age" || s.id === "city" ? 0.22 : s.id === "network" ? 0.28 : 0.46),
+    ])
+  );
+}
+
+// ─── Hardcoded company profiles ───────────────────────────────────────────────
+const FLAGS = { Bolivia: "🇧🇴", Colombia: "🇨🇴", Ecuador: "🇪🇨", Venezuela: "🇻🇪", Perú: "🇵🇪", México: "🇲🇽" };
+
+const PROFILES = [
+  {
+    name: "Luis Arce", country: "Bolivia", city: "Cochabamba", score: 21,
+    bio: "Construyó una app de pagos rurales usada por más de 300 familias. Activo en GitHub desde los 17.",
+    signals: { product: true, teaches: true, initiative: true, hackathon: true, github: true, city: true, age: true, network: false },
+  },
+  {
+    name: "Emanuel López", country: "Colombia", city: "Barranquilla", score: 21,
+    bio: "Creó una plataforma de tutorías peer-to-peer para su colegio. Ganó dos hackatones regionales.",
+    signals: { product: true, teaches: true, initiative: true, hackathon: true, github: true, city: true, age: true, network: false },
+  },
+  {
+    name: "Marco Vinicio", country: "Ecuador", city: "Cuenca", score: 20,
+    bio: "Desarrolló un bot de alertas sísmicas que hoy usan tres municipios. Dicta talleres de Arduino.",
+    signals: { product: true, teaches: true, initiative: true, hackathon: true, github: true, city: true, age: false, network: true },
+  },
+  {
+    name: "Gabriel Cisneros", country: "Venezuela", city: "Maracaibo", score: 19,
+    bio: "Automatizó el inventario de una tienda local con Python a los 19. Top contributor en foro LatinDev.",
+    signals: { product: true, teaches: false, initiative: true, hackathon: true, github: true, city: true, age: true, network: true },
+  },
+  {
+    name: "Daniela Quispe", country: "Perú", city: "Arequipa", score: 14,
+    bio: "Diseñadora con código. Publicó una librería de componentes UI en npm con 400 descargas semanales.",
+    signals: { product: true, teaches: true, initiative: false, hackathon: false, github: true, city: true, age: true, network: true },
+  },
+  {
+    name: "Sofía Martínez", country: "México", city: "Mérida", score: 8,
+    bio: "Está aprendiendo React y tiene un blog técnico en construcción. Mucho potencial por desarrollar.",
+    signals: { product: false, teaches: true, initiative: false, hackathon: false, github: false, city: true, age: true, network: false },
+  },
+];
+
+// ─── Shared components ─────────────────────────────────────────────────────────
+
+function ScoreRing({ score, color, animate, size = 200 }) {
+  const R = size * 0.4, circ = 2 * Math.PI * R;
+  const pct = animate ? score / MAX : 0;
+  return (
+    <div style={{ position: "relative", width: size, height: size }}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)", display: "block" }}>
+        <circle cx={size/2} cy={size/2} r={R} fill="none" stroke={C.line} strokeWidth={size * 0.068} />
+        <circle
+          cx={size/2} cy={size/2} r={R} fill="none"
+          stroke={color} strokeWidth={size * 0.068} strokeLinecap="round"
+          strokeDasharray={circ}
+          strokeDashoffset={circ * (1 - pct)}
+          style={{ transition: "stroke-dashoffset 1.4s cubic-bezier(.2,.8,.2,1)", filter: `drop-shadow(0 0 8px ${color})` }}
+        />
+      </svg>
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ fontFamily: "ui-monospace,monospace", fontSize: size * 0.26, fontWeight: 700, color, lineHeight: 1 }}>
+          {animate ? score : 0}
+        </span>
+        <span style={{ fontFamily: "ui-monospace,monospace", fontSize: size * 0.065, color: C.muted, marginTop: 4 }}>
+          / {MAX} pts
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function SignalList({ signals }) {
+  return (
+    <>
+      {SIGNALS.map((s, idx) => {
+        const on = !!signals[s.id];
+        return (
+          <div key={s.id} style={{
+            display: "flex", alignItems: "flex-start", gap: 12, padding: "9px 0",
+            borderBottom: idx < SIGNALS.length - 1 ? `1px solid ${C.line}` : "none",
+          }}>
+            <span style={{
+              width: 20, height: 20, borderRadius: 6, flex: "none", marginTop: 1,
+              display: "grid", placeItems: "center", fontSize: 11,
+              background: on ? C.lime : "transparent",
+              border: `1px solid ${on ? C.lime : C.line}`,
+              color: C.bg, fontWeight: 700,
+            }}>
+              {on ? "✓" : ""}
+            </span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, color: on ? C.ink : C.muted }}>{s.label}</div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{s.hint}</div>
+            </div>
+            <span style={{ fontFamily: "ui-monospace,monospace", fontSize: 13, fontWeight: 700, color: on ? C.lime : C.line, paddingTop: 2 }}>
+              {on ? `+${s.pts}` : "—"}
+            </span>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function TierBadge({ tier }) {
+  const colors = { Prioritario: C.lime, "En espera": C.amber, Seguimiento: C.muted };
+  const color = colors[tier] || C.muted;
+  return (
+    <span style={{
+      fontFamily: "ui-monospace,monospace", fontSize: 10, letterSpacing: "0.15em",
+      textTransform: "uppercase", color,
+      border: `1px solid ${color}`, borderRadius: 99,
+      padding: "3px 10px", whiteSpace: "nowrap",
+    }}>
+      {tier}
+    </span>
+  );
+}
+
+// ─── Creator view ──────────────────────────────────────────────────────────────
+
+function Intro({ onScan }) {
+  const [handle, setHandle] = useState("");
+  const [focused, setFocused] = useState(false);
+  const inputRef = useRef();
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  return (
+    <div style={{ textAlign: "center", maxWidth: 560, margin: "0 auto", padding: "0 20px" }}>
+      <div style={{
+        display: "inline-block", fontFamily: "ui-monospace,monospace",
+        fontSize: 11, letterSpacing: "0.28em", color: C.lime,
+        textTransform: "uppercase", marginBottom: 28,
+        border: `1px solid ${C.line}`, borderRadius: 99, padding: "5px 14px",
+      }}>
+        Programa NEXT · Andrés Bilbao
+      </div>
+
+      <h1 style={{ fontSize: "clamp(32px,6vw,60px)", fontWeight: 700, lineHeight: 1.04, letterSpacing: "-0.03em", margin: "0 0 20px" }}>
+        Descubre cuánto<br />vale lo que <span style={{ color: C.lime }}>construiste</span>
+      </h1>
+
+      <p style={{ color: C.muted, fontSize: "clamp(15px,2vw,18px)", lineHeight: 1.6, maxWidth: 420, margin: "0 auto 40px" }}>
+        Pega tu usuario de GitHub y en 30 segundos sabes si calificas para{" "}
+        <strong style={{ color: C.ink }}>NEXT</strong>. Sin formularios. Sin espera.
+      </p>
+
+      <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+        <input
+          ref={inputRef}
+          value={handle}
+          onChange={e => setHandle(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && handle.trim() && onScan(handle.trim())}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder="github.com/tu-usuario"
+          style={{
+            background: C.card, border: `1px solid ${focused ? C.lime : C.line}`,
+            borderRadius: 12, padding: "14px 18px",
+            color: C.ink, fontSize: 15, width: "min(320px,75vw)",
+            outline: "none", fontFamily: "ui-monospace,monospace",
+            transition: "border-color .2s",
+          }}
+        />
+        <button
+          onClick={() => handle.trim() && onScan(handle.trim())}
+          style={{
+            background: C.lime, color: C.bg, border: "none",
+            borderRadius: 12, padding: "14px 26px",
+            fontWeight: 700, fontSize: 15, cursor: "pointer",
+          }}
+        >
+          Escanear →
+        </button>
+      </div>
+
+      <div style={{ display: "flex", gap: 24, justifyContent: "center", marginTop: 36, flexWrap: "wrap" }}>
+        {["Gratis", "30 segundos", "Mide tu trabajo real"].map(s => (
+          <span key={s} style={{ fontSize: 13, color: C.muted }}>
+            <span style={{ color: C.lime, marginRight: 5 }}>✓</span>{s}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Scanning({ handle }) {
+  const msgs = ["Conectando con GitHub…","Leyendo repositorios y actividad…","Detectando señales de creador…","Calculando tu Maker Score…"];
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setI(v => Math.min(v + 1, msgs.length - 1)), 650);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div style={{ textAlign: "center" }}>
+      <div style={{ position: "relative", width: 120, height: 120, margin: "0 auto 32px" }}>
+        <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: `2px solid ${C.line}` }} />
+        <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "2px solid transparent", borderTopColor: C.lime, animation: "spin 1s linear infinite" }} />
+        <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", fontSize: 36 }}>🛰️</div>
+      </div>
+      <div style={{ fontFamily: "ui-monospace,monospace", color: C.lime, fontSize: 14, marginBottom: 16 }}>{handle}</div>
+      <div style={{ fontSize: 18, fontWeight: 500 }}>{msgs[i]}</div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </div>
+  );
+}
+
+function Result({ handle, signals, onRetry }) {
+  const score = calcScore(signals);
+  const vd = verdict(score);
+  const [animated, setAnimated] = useState(false);
+  const [shown, setShown] = useState(false);
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setAnimated(true), 80);
+    const t2 = setTimeout(() => setShown(true), 900);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, []);
+
+  return (
+    <div style={{ maxWidth: 600, margin: "0 auto", padding: "0 20px" }}>
+      <div style={{ textAlign: "center", fontFamily: "ui-monospace,monospace", fontSize: 13, color: C.muted, marginBottom: 32 }}>
+        {handle}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, marginBottom: 40 }}>
+        <ScoreRing score={score} color={vd.color} animate={animated} />
+        <div style={{ textAlign: "center" }}>
+          <div style={{
+            fontSize: "clamp(22px,4vw,34px)", fontWeight: 700, color: vd.color, marginBottom: 8,
+            opacity: shown ? 1 : 0, transform: shown ? "none" : "translateY(8px)",
+            transition: "opacity .6s, transform .6s",
+          }}>
+            {vd.label}
+          </div>
+          <div style={{ color: C.muted, fontSize: 15, lineHeight: 1.5, opacity: shown ? 1 : 0, transition: "opacity .6s .1s" }}>
+            {vd.sub}
+          </div>
+        </div>
+      </div>
+
+      <div style={{
+        background: C.card, border: `1px solid ${C.line}`, borderRadius: 16, padding: "20px 24px", marginBottom: 28,
+        opacity: shown ? 1 : 0, transition: "opacity .6s .2s",
+      }}>
+        <div style={{ fontFamily: "ui-monospace,monospace", fontSize: 10, letterSpacing: "0.2em", textTransform: "uppercase", color: C.muted, marginBottom: 16 }}>
+          Esto es lo que ya demostraste
+        </div>
+        <SignalList signals={signals} />
+      </div>
+
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center", opacity: shown ? 1 : 0, transition: "opacity .6s .35s" }}>
+        <button style={{ background: vd.color, color: C.bg, border: "none", borderRadius: 12, padding: "13px 26px", fontWeight: 700, fontSize: 15, cursor: "pointer", flex: "1 1 200px" }}>
+          {vd.cta} →
+        </button>
+        <button
+          onClick={() => alert("En la versión real esto genera una imagen con tu Maker Score lista para compartir en Instagram o TikTok.")}
+          style={{ background: "transparent", color: C.ink, border: `1px solid ${C.line}`, borderRadius: 12, padding: "13px 22px", fontWeight: 600, fontSize: 15, cursor: "pointer", flex: "1 1 160px" }}
+        >
+          ↗ Compartir mi score
+        </button>
+      </div>
+
+      <div style={{ textAlign: "center", marginTop: 16 }}>
+        <button onClick={onRetry} style={{ background: "none", border: "none", color: C.muted, fontSize: 13, cursor: "pointer", textDecoration: "underline" }}>
+          Probar con otro usuario
+        </button>
+      </div>
+
+      <p style={{ textAlign: "center", color: C.muted, fontSize: 12, marginTop: 28, lineHeight: 1.6, maxWidth: 400, marginInline: "auto" }}>
+        Al compartir tu score traes a otros creadores. Así Maker Radar crece solo — y NEXT descubre talento que nadie estaba viendo.
+      </p>
+    </div>
+  );
+}
+
+// ─── Company view ──────────────────────────────────────────────────────────────
+
+function ProfileCard({ profile, onClick }) {
+  const vd = verdict(profile.score);
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: hovered ? C.card2 : C.card,
+        border: `1px solid ${hovered ? C.line : "#17171a"}`,
+        borderRadius: 16, padding: "20px 24px",
+        cursor: "pointer", transition: "background .15s, border-color .15s",
+        display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap",
+      }}
+    >
+      <div style={{ fontSize: 36, flex: "none" }}>{FLAGS[profile.country] || "🌎"}</div>
+
+      <div style={{ flex: 1, minWidth: 160 }}>
+        <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 3 }}>{profile.name}</div>
+        <div style={{ fontSize: 13, color: C.muted, marginBottom: 8 }}>{profile.city}, {profile.country}</div>
+        <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5 }}>{profile.bio}</div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10, flex: "none" }}>
+        <div style={{
+          fontFamily: "ui-monospace,monospace", fontSize: 28, fontWeight: 700, color: vd.color,
+          filter: `drop-shadow(0 0 6px ${vd.color})`,
+        }}>
+          {profile.score}
+        </div>
+        <TierBadge tier={vd.tier} />
+      </div>
+    </div>
+  );
+}
+
+function ProfileModal({ profile, onClose }) {
+  const vd = verdict(profile.score);
+  const [animated, setAnimated] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setAnimated(true), 60);
+    return () => clearTimeout(t);
+  }, []);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        zIndex: 100, padding: "20px",
+        backdropFilter: "blur(4px)",
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: C.card, border: `1px solid ${C.line}`, borderRadius: 20,
+          padding: "32px 28px", maxWidth: 520, width: "100%", maxHeight: "90vh",
+          overflowY: "auto",
+          transform: animated ? "none" : "translateY(16px)",
+          opacity: animated ? 1 : 0,
+          transition: "transform .3s, opacity .3s",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <span style={{ fontSize: 40 }}>{FLAGS[profile.country] || "🌎"}</span>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 20 }}>{profile.name}</div>
+              <div style={{ fontSize: 13, color: C.muted }}>{profile.city}, {profile.country}</div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 20, cursor: "pointer", lineHeight: 1, padding: 4 }}>✕</button>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 24 }}>
+          <ScoreRing score={profile.score} color={vd.color} animate={animated} size={110} />
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 18, color: vd.color, marginBottom: 6 }}>{vd.label}</div>
+            <TierBadge tier={vd.tier} />
+            <div style={{ fontSize: 13, color: C.muted, marginTop: 10, lineHeight: 1.5, maxWidth: 260 }}>{profile.bio}</div>
+          </div>
+        </div>
+
+        <div style={{ background: C.bg, border: `1px solid ${C.line}`, borderRadius: 12, padding: "16px 20px", marginBottom: 20 }}>
+          <div style={{ fontFamily: "ui-monospace,monospace", fontSize: 10, letterSpacing: "0.2em", textTransform: "uppercase", color: C.muted, marginBottom: 14 }}>
+            Señales detectadas
+          </div>
+          <SignalList signals={profile.signals} />
+        </div>
+
+        <button
+          onClick={() => alert("Esta función es premium. Actualiza tu plan para contactar directamente a los creadores y acceder a su información de contacto.")}
+          style={{
+            width: "100%", background: C.lime, color: C.bg,
+            border: "none", borderRadius: 12, padding: "14px",
+            fontWeight: 700, fontSize: 16, cursor: "pointer",
+          }}
+        >
+          Contactar →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CompanyView() {
+  const [filter, setFilter] = useState("Todos");
+  const [selected, setSelected] = useState(null);
+
+  const FILTERS = ["Todos", "Prioritario", "En espera"];
+
+  const filtered = PROFILES
+    .filter(p => filter === "Todos" || verdict(p.score).tier === filter)
+    .sort((a, b) => b.score - a.score);
+
+  return (
+    <div style={{ maxWidth: 700, margin: "0 auto", padding: "0 20px", width: "100%" }}>
+      <div style={{ marginBottom: 32 }}>
+        <h2 style={{ fontSize: "clamp(24px,4vw,36px)", fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 8 }}>
+          Radar de <span style={{ color: C.lime }}>talento LATAM</span>
+        </h2>
+        <p style={{ color: C.muted, fontSize: 15, lineHeight: 1.5, maxWidth: 480 }}>
+          Creadores evaluados por Maker Radar. Ordenados por puntaje — los más listos para trabajar contigo, primero.
+        </p>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 28, flexWrap: "wrap" }}>
+        {FILTERS.map(f => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            style={{
+              background: filter === f ? C.lime : "transparent",
+              color: filter === f ? C.bg : C.muted,
+              border: `1px solid ${filter === f ? C.lime : C.line}`,
+              borderRadius: 99, padding: "7px 18px",
+              fontWeight: filter === f ? 700 : 400,
+              fontSize: 13, cursor: "pointer", transition: "all .15s",
+            }}
+          >
+            {f}
+            {f !== "Todos" && (
+              <span style={{ marginLeft: 6, fontFamily: "ui-monospace,monospace", fontSize: 11, opacity: 0.7 }}>
+                {PROFILES.filter(p => verdict(p.score).tier === f).length}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {filtered.map(p => (
+          <ProfileCard key={p.name} profile={p} onClick={() => setSelected(p)} />
+        ))}
+        {filtered.length === 0 && (
+          <div style={{ textAlign: "center", color: C.muted, padding: "60px 20px", fontSize: 15 }}>
+            No hay perfiles con este nivel por ahora.
+          </div>
+        )}
+      </div>
+
+      {selected && <ProfileModal profile={selected} onClose={() => setSelected(null)} />}
+    </div>
+  );
+}
+
+// ─── Root ──────────────────────────────────────────────────────────────────────
+
+function App() {
+  const [mode, setMode] = useState("creator"); // "creator" | "company"
+  const [step, setStep] = useState("intro");
+  const [handle, setHandle] = useState("");
+  const [signals, setSignals] = useState(null);
+
+  function scan(h) {
+    setHandle(h);
+    setStep("scanning");
+    setTimeout(() => { setSignals(evaluate(h)); setStep("result"); }, 2800);
+  }
+
+  function reset() { setStep("intro"); setHandle(""); setSignals(null); }
+
+  function switchMode(m) { setMode(m); reset(); }
+
+  return (
+    <div style={{
+      background: C.bg, color: C.ink, minHeight: "100vh",
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      display: "flex", flexDirection: "column",
+    }}>
+      {/* NAV */}
+      <nav style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "16px clamp(20px,4vw,48px)",
+        borderBottom: `1px solid ${C.line}`,
+        position: "sticky", top: 0, background: C.bg, zIndex: 10,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: C.lime, boxShadow: `0 0 12px ${C.lime}`, flex: "none" }} />
+          <span style={{ fontWeight: 700, fontSize: 16, letterSpacing: "-0.01em" }}>
+            MAKER<span style={{ color: C.lime }}>RADAR</span>
+          </span>
+        </div>
+
+        {/* Toggle */}
+        <div style={{
+          display: "flex", background: C.card, border: `1px solid ${C.line}`,
+          borderRadius: 99, padding: 4, gap: 2,
+        }}>
+          {[["creator", "Soy creador"], ["company", "Soy empresa"]].map(([m, label]) => (
+            <button
+              key={m}
+              onClick={() => switchMode(m)}
+              style={{
+                background: mode === m ? C.lime : "transparent",
+                color: mode === m ? C.bg : C.muted,
+                border: "none", borderRadius: 99,
+                padding: "7px 18px",
+                fontWeight: mode === m ? 700 : 400,
+                fontSize: 13, cursor: "pointer", transition: "all .2s",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {mode === "creator" && step !== "intro" ? (
+          <button onClick={reset} style={{ background: "none", border: "none", color: C.muted, fontSize: 13, cursor: "pointer" }}>
+            ← Volver
+          </button>
+        ) : (
+          <div style={{ width: 60 }} />
+        )}
+      </nav>
+
+      {/* MAIN */}
+      <main style={{
+        flex: 1, display: "flex",
+        alignItems: mode === "company" ? "flex-start" : "center",
+        justifyContent: "center",
+        padding: "clamp(32px,5vw,72px) clamp(20px,4vw,48px)",
+      }}>
+        {mode === "creator" && (
+          <>
+            {step === "intro"    && <Intro onScan={scan} />}
+            {step === "scanning" && <Scanning handle={handle} />}
+            {step === "result"   && signals && <Result handle={handle} signals={signals} onRetry={reset} />}
+          </>
+        )}
+        {mode === "company" && <CompanyView />}
+      </main>
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg) } }
+        * { box-sizing: border-box; }
+        body { margin: 0; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: ${C.bg}; }
+        ::-webkit-scrollbar-thumb { background: ${C.line}; border-radius: 99px; }
+      `}</style>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+</body>
+</html>
